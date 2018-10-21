@@ -1,24 +1,36 @@
 package com.example.android.cameracustomica;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.params.StreamConfigurationMap;
+import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Size;
 import android.util.SparseIntArray;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
 public class MainActivity extends AppCompatActivity {
 
+    private static final int REQUEST_CAMERA_PERMISSION_RESULT = 0;
     private TextureView mTextureView;
     // To make TextureView available setup a surface listener
     private TextureView.SurfaceTextureListener mSurfaceTextureListener =
@@ -29,6 +41,9 @@ public class MainActivity extends AppCompatActivity {
                     // Width 1440 and Height = 2112
                     // When TextureView is available setup the camera with respective width and height
                     setupCamera(width, height);
+
+                    // Connect to Camera
+                    connectCamera();
                 }
 
                 @Override
@@ -55,6 +70,15 @@ public class MainActivity extends AppCompatActivity {
     // Creating a CameraDevice member variable
     private CameraDevice mCameraDevice;
 
+    private static class CompareSizeByArea implements Comparator<Size> {
+
+        @Override
+        public int compare(Size lhs, Size rhs) {
+            return Long.signum((long) lhs.getWidth() * lhs.getHeight() /
+                    (long) rhs.getWidth() * rhs.getHeight());
+        }
+    }
+
     // A listener for the CameraDevice
     private CameraDevice.StateCallback mCameraDeviceStateCallback =
             new CameraDevice.StateCallback() {
@@ -67,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
                 public void onOpened(CameraDevice camera) {
                     // Assigning the camera to our CameraDevice object
                     mCameraDevice = camera;
+                    Toast.makeText(getApplicationContext(), "Camera Connection Successful!", Toast.LENGTH_SHORT).show();
                 }
 
                 /**
@@ -95,6 +120,8 @@ public class MainActivity extends AppCompatActivity {
 
     // String object to reference CameraID
     private String mCameraId;
+
+    private Size mPreviewSize;
 
     // Use SparseArray of integer to store orientation types
     private static SparseIntArray ORIENTATION = new SparseIntArray();
@@ -127,6 +154,9 @@ public class MainActivity extends AppCompatActivity {
             // When TextureView is available setup the camera with respective width and height
             setupCamera(mTextureView.getWidth(), mTextureView.getHeight());
 
+            // Connect to camera
+            connectCamera();
+
         } else {
 
             // If not available, inflate it
@@ -144,6 +174,18 @@ public class MainActivity extends AppCompatActivity {
 
         super.onPause();
 
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        // Check the request code
+        if (requestCode == REQUEST_CAMERA_PERMISSION_RESULT) {
+            // If the request was granted or not
+            if (grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(getApplicationContext(), "App won't run without camera permission", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     @Override
@@ -180,7 +222,7 @@ public class MainActivity extends AppCompatActivity {
      * @param height - height of the TextureView layout
      */
 
-    private void setupCamera(int width, int height){
+    private void setupCamera (int width, int height){
 
         // CameraManager object handles CAMERA_SERVICE of the system
         CameraManager cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
@@ -197,6 +239,9 @@ public class MainActivity extends AppCompatActivity {
                     // If we get front facing camera, we continue the for loop without storing the cameraId
                     // continue;
                 } else {
+                    // Map for all the different resolution represented by the preview, by the camera, by the video...
+                    StreamConfigurationMap map = cameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+
                     // Getting the device orientation
                     int deviceOrientation = getWindowManager().getDefaultDisplay().getRotation();
                     // Getting the total orientation
@@ -208,9 +253,43 @@ public class MainActivity extends AppCompatActivity {
                         rotatedWidth = height;
                         rotatedHeight = width;
                     }
+
+                    // Setting up the preview display size
+                    mPreviewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class), rotatedWidth, rotatedHeight);
                     // Getting the cameraId
                     mCameraId = cameraId;
                 }
+            }
+        } catch (CameraAccessException e){
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Method for connecting to camera
+     */
+    private void connectCamera (){
+        // Instance of the CameraManager object to connect to camera
+        CameraManager cameraManager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+
+        try {
+            // Check if SDK version is at least 23
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+                // Check if the permission has been granted in AndroidManifest.xml
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+                        PackageManager.PERMISSION_GRANTED) {
+                    cameraManager.openCamera(mCameraId, mCameraDeviceStateCallback, mBackgroundHandler);
+                } else {
+                    // if the permission was denied before, system prompt permission request
+                    if (shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)){
+                        Toast.makeText(this, "Video app requires access to camera", Toast.LENGTH_SHORT).show();
+                    }
+                    // If it is the 1st time
+                    requestPermissions (new String[] {Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION_RESULT);
+                }
+            } else {
+                // For SDK older than 23, just open the camera
+                cameraManager.openCamera(mCameraId, mCameraDeviceStateCallback, mBackgroundHandler);
             }
         } catch (CameraAccessException e){
             e.printStackTrace();
@@ -272,5 +351,30 @@ public class MainActivity extends AppCompatActivity {
 
         // Returns the degree of total orientation
         return (sensorOrientaion + deviceOrientaion + 360) % 360;
+    }
+
+    private static Size chooseOptimalSize (Size[] choices, int width, int height) {
+
+        // Is the resolution field sensor big enough for our display
+        List<Size> bigEnough = new ArrayList<Size>();
+
+        // Iterating over all the preview resolutions
+        for (Size option : choices){
+            // Check if 1. Aspect ratio matches the TextureView
+            //          2. Value from the preview sensor is big enough for width
+            //          3. and height wise for our requested TextureView
+            if (option.getHeight() == option.getWidth() * height / width &&
+                    option.getWidth() >= width && option.getHeight() >= height) {
+
+                bigEnough.add(option);
+            }
+        }
+
+        if (bigEnough.size() > 0) {
+            // Returns the minimum size from the list
+            return Collections.min(bigEnough, new CompareSizeByArea());
+        } else {
+            return choices[0];
+        }
     }
 }
