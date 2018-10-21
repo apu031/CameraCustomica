@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">CameraCustomica</string>
+    <string name="image_button">Capture</string>
+    <string name="video_button">Record</string>
+</resources>
