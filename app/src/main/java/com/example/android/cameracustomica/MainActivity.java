@@ -11,6 +11,8 @@ import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.SparseIntArray;
+import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
 import android.widget.Toast;
@@ -93,6 +95,16 @@ public class MainActivity extends AppCompatActivity {
 
     // String object to reference CameraID
     private String mCameraId;
+
+    // Use SparseArray of integer to store orientation types
+    private static SparseIntArray ORIENTATION = new SparseIntArray();
+    static {
+        ORIENTATION.append(Surface.ROTATION_0, 0);
+        ORIENTATION.append(Surface.ROTATION_90, 90);
+        ORIENTATION.append(Surface.ROTATION_180, 180);
+        ORIENTATION.append(Surface.ROTATION_270, 270);
+    }
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -185,6 +197,18 @@ public class MainActivity extends AppCompatActivity {
                     // If we get front facing camera, we continue the for loop without storing the cameraId
                     // continue;
                 } else {
+                    // Getting the device orientation
+                    int deviceOrientation = getWindowManager().getDefaultDisplay().getRotation();
+                    // Getting the total orientation
+                    int totalRotation = sensorToDeviceRotaion(cameraCharacteristics, deviceOrientation);
+                    int rotatedWidth = width;
+                    int rotatedHeight = height;
+
+                    if (totalRotation == 90 || totalRotation == 270){
+                        rotatedWidth = height;
+                        rotatedHeight = width;
+                    }
+                    // Getting the cameraId
                     mCameraId = cameraId;
                 }
             }
@@ -230,5 +254,23 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
 
+    }
+
+    /**
+     *
+     * @param cameraCharacteristics --> object to figure out camera attributes
+     * @param deviceOrientaion --> The orientation status of the device
+     * @return --> the angle of mod of total camera orientation and device orientation
+     */
+    private static int sensorToDeviceRotaion(CameraCharacteristics cameraCharacteristics, int deviceOrientaion){
+
+        // Getting the orientation of the camera
+        int sensorOrientaion = cameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+
+        // Getting the oritentaion of the device
+        deviceOrientaion = ORIENTATION.get(deviceOrientaion);
+
+        // Returns the degree of total orientation
+        return (sensorOrientaion + deviceOrientaion + 360) % 360;
     }
 }
